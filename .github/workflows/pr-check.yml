@@ -1,0 +1,74 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Lint
+        id: lint
+        run: |
+          npm run lint 2>&1 | tee lint-output.txt
+          echo "status=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Test with coverage
+        id: test
+        run: |
+          npm run test:coverage 2>&1 | tee test-output.txt
+          echo "status=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const lintOutput = fs.readFileSync('lint-output.txt', 'utf8');
+            const testOutput = fs.readFileSync('test-output.txt', 'utf8');
+
+            const lintStatus = '${{ steps.lint.outcome }}' === 'success' ? '✅' : '❌';
+            const testStatus = '${{ steps.test.outcome }}' === 'success' ? '✅' : '❌';
+
+            const body = `## CI Results
+
+            | Check | Status |
+            |-------|--------|
+            | Lint | ${lintStatus} |
+            | Tests | ${testStatus} |
+
+            <details>
+            <summary>Test Output</summary>
+
+            \`\`\`
+            ${testOutput.slice(-2000)}
+            \`\`\`
+            </details>
+            `;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Fail if checks failed
+        if: steps.lint.outcome == 'failure' || steps.test.outcome == 'failure'
+        run: exit 1
