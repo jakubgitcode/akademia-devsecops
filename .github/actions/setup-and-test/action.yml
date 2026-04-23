@@ -1,0 +1,41 @@
+name: 'Setup and Test'
+description: 'Setup Node.js, install dependencies, run tests'
+
+inputs:
+  node-version:
+    description: 'Node.js version'
+    required: false
+    default: '20'
+  run-coverage:
+    description: 'Run with coverage'
+    required: false
+    default: 'false'
+
+outputs:
+  test-result:
+    description: 'Test result status'
+    value: ${{ steps.test.outputs.result }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Run tests
+      id: test
+      shell: bash
+      run: |
+        if [ "${{ inputs.run-coverage }}" = "true" ]; then
+          npm run test:coverage
+        else
+          npm test
+        fi
+        echo "result=success" >> $GITHUB_OUTPUT

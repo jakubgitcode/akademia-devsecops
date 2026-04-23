@@ -1,0 +1,35 @@
+name: Main Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # Uzycie Composite Action
+  quick-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests with composite action
+        uses: ./.github/actions/setup-and-test
+        with:
+          node-version: '20'
+          run-coverage: 'true'
+
+  # Uzycie Reusable Workflow
+  full-ci:
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      node-version: '20'
+      run-lint: true
+
+  # Job zalezny od reusable workflow
+  report:
+    needs: [quick-test, full-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "Quick test: done"
+          echo "Full CI test result: ${{ needs.full-ci.outputs.test-passed }}"
+          echo "All checks passed!"

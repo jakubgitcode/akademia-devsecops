@@ -1,0 +1,42 @@
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: false
+        type: string
+        default: '20'
+      run-lint:
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      test-passed:
+        description: 'Whether tests passed'
+        value: ${{ jobs.ci.outputs.test-result }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    outputs:
+      test-result: ${{ steps.test.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Lint
+        if: ${{ inputs.run-lint }}
+        run: npm run lint
+
+      - name: Test
+        id: test
+        run: |
+          npm test
+          echo "result=passed" >> $GITHUB_OUTPUT
