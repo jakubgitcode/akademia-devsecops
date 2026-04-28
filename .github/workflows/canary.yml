@@ -1,0 +1,68 @@
+name: Canary Deploy Simulation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        default: 'v2.0.0'
+
+jobs:
+  canary-10:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy canary (10%)
+        run: |
+          echo "=== Canary Deployment - Phase 1 ==="
+          echo "Deploying ${{ inputs.version }} to 10% of traffic"
+          sleep 2
+          echo "Canary deployed"
+          echo ""
+          echo "Monitoring metrics (5 min)..."
+          echo "  Error rate: 0.02% (baseline: 0.01%)"
+          echo "  P99 latency: 120ms (baseline: 100ms)"
+          echo "  Status: WITHIN THRESHOLD"
+
+  canary-25:
+    needs: canary-10
+    runs-on: ubuntu-latest
+    steps:
+      - name: Increase to 25%
+        run: |
+          echo "=== Canary Deployment - Phase 2 ==="
+          echo "Increasing ${{ inputs.version }} to 25% of traffic"
+          sleep 2
+          echo ""
+          echo "Monitoring metrics (5 min)..."
+          echo "  Error rate: 0.015% (baseline: 0.01%)"
+          echo "  P99 latency: 110ms (baseline: 100ms)"
+          echo "  Status: WITHIN THRESHOLD"
+
+  canary-50:
+    needs: canary-25
+    runs-on: ubuntu-latest
+    steps:
+      - name: Increase to 50%
+        run: |
+          echo "=== Canary Deployment - Phase 3 ==="
+          echo "Increasing ${{ inputs.version }} to 50% of traffic"
+          sleep 2
+          echo ""
+          echo "Monitoring metrics (10 min)..."
+          echo "  Error rate: 0.012% (baseline: 0.01%)"
+          echo "  P99 latency: 105ms (baseline: 100ms)"
+          echo "  Status: WITHIN THRESHOLD"
+
+  promote:
+    needs: canary-50
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Promote to 100%
+        run: |
+          echo "=== Canary Promotion ==="
+          echo "All metrics within threshold"
+          echo "Promoting ${{ inputs.version }} to 100%"
+          sleep 2
+          echo "Deployment complete: ${{ inputs.version }} serving 100% traffic"

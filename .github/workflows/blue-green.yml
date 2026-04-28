@@ -1,0 +1,48 @@
+name: Blue/Green Deploy Simulation
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+        default: 'v2.0.0'
+
+jobs:
+  deploy-green:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy Green environment
+        run: |
+          echo "=== Blue/Green Deployment ==="
+          echo "Current (Blue): v1.0.0 - serving traffic"
+          echo ""
+          echo "Step 1: Deploy ${{ inputs.version }} to Green"
+          sleep 2
+          echo "Green deployed: ${{ inputs.version }}"
+          echo ""
+          echo "Step 2: Run smoke tests on Green"
+          sleep 2
+          echo "Smoke tests: PASSED"
+          echo ""
+          echo "Step 3: Switch traffic Blue -> Green"
+          sleep 1
+          echo "Traffic switched to Green (${{ inputs.version }})"
+          echo ""
+          echo "Step 4: Blue (v1.0.0) on standby for rollback"
+          echo ""
+          echo "=== Deployment complete ==="
+          echo "Active: Green (${{ inputs.version }})"
+          echo "Standby: Blue (v1.0.0)"
+
+  verify:
+    needs: deploy-green
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deployment
+        run: |
+          echo "Verifying Green environment..."
+          echo "Health check: OK"
+          echo "Response time: 45ms"
+          echo "Error rate: 0.01%"
+          echo "Deployment verified successfully"
