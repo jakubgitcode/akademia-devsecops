@@ -1,0 +1,31 @@
+rules:
+  - id: no-flask-debug
+    pattern: app.run(debug=True, ...)
+    message: "Flask debug mode must not be enabled in production"
+    severity: ERROR
+    languages: [python]
+
+  - id: no-shell-true
+    patterns:
+      - pattern: subprocess.check_output(..., shell=True, ...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.run(..., shell=True, ...)
+    message: "Avoid shell=True in subprocess - use list of arguments"
+    severity: WARNING
+    languages: [python]
+
+  - id: no-pickle-loads
+    pattern: pickle.loads(...)
+    message: "pickle.loads() is vulnerable to deserialization attacks - use json instead"
+    severity: ERROR
+    languages: [python]
+
+  - id: require-parameterized-queries
+    patterns:
+      - pattern: cursor.execute(f"...", ...)
+      - pattern: cursor.execute("..." + $VAR, ...)
+      - pattern: cursor.execute("...".format(...), ...)
+      - pattern: cursor.execute("..." % ..., ...)
+    message: "Use parameterized queries to prevent SQL injection"
+    severity: ERROR
+    languages: [python]

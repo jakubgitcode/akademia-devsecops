@@ -1,0 +1,119 @@
+name: Security Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # Job 1: Secrets scanning
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 2: SAST
+  sast:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep scan
+        run: |
+          semgrep scan \
+            --config auto \
+            --config .semgrep/ \
+            --sarif \
+            --output semgrep.sarif \
+            --severity ERROR \
+            .
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+
+  # Job 3: Dependency scan
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy dependency scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-deps.sarif'
+          severity: 'HIGH,CRITICAL'
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-deps.sarif
+
+  # Job 4: Container scan
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t myapp:security-test .
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'myapp:security-test'
+          format: 'sarif'
+          output: 'trivy-image.sarif'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+
+  # Job 5: IaC scan
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy IaC scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'k8s/'
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+  # Summary job
+  security-gate:
+    needs: [secrets, sast, dependencies, container, iac]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Security Gate
+        run: |
+          echo "=== Security Pipeline Results ==="
+          echo "Secrets:      ${{ needs.secrets.result }}"
+          echo "SAST:         ${{ needs.sast.result }}"
+          echo "Dependencies: ${{ needs.dependencies.result }}"
+          echo "Container:    ${{ needs.container.result }}"
+          echo "IaC:          ${{ needs.iac.result }}"
+
+          if [ "${{ needs.secrets.result }}" = "failure" ] || \
+             [ "${{ needs.container.result }}" = "failure" ] || \
+             [ "${{ needs.iac.result }}" = "failure" ]; then
+            echo "SECURITY GATE: FAILED - blocking merge"
+            exit 1
+          fi
+
+          echo "SECURITY GATE: PASSED"
