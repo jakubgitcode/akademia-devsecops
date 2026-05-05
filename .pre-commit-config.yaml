@@ -17,7 +17,6 @@ repos:
     rev: v8.30.0
     hooks:
       - id: gitleaks
-        #args: ["detect"]
 
   - repo: https://github.com/semgrep/semgrep
     rev: v1.78.0
