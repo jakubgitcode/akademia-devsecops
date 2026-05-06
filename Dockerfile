@@ -4,6 +4,9 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 FROM node:22-alpine
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
