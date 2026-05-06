@@ -29,3 +29,22 @@ rules:
     message: "Use parameterized queries to prevent SQL injection"
     severity: ERROR
     languages: [python]
+
+  - id: no-eval
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: new Function(...)
+    message: "eval() and Function() constructor are dangerous - potential code injection"
+    severity: ERROR
+    languages: [javascript, typescript]
+
+  - id: no-innerhtml-xss
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $VAL
+          - pattern: document.write(...)
+          - pattern: document.writeln(...)
+    message: "Direct DOM manipulation can lead to XSS - use textContent or a sanitizer"
+    severity: ERROR
+    languages: [javascript, typescript]

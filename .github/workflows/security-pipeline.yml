@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: write
 
 jobs:
   # Job 1: Secrets scanning
@@ -94,9 +95,27 @@ jobs:
           severity: 'HIGH,CRITICAL'
           exit-code: '1'
 
+  # Job 6: DAST
+  dast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start Juice Shop
+        run: |
+          docker run -d --name juice-shop -p 3000:3000 bkimminich/juice-shop
+          sleep 15
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'http://localhost:3000'
+          fail_action: false
+          artifact_name: zap-report
+      - name: Stop Juice Shop
+        if: always()
+        run: docker stop juice-shop && docker rm juice-shop
+
   # Summary job
   security-gate:
-    needs: [secrets, sast, dependencies, container, iac]
+    needs: [secrets, sast, dependencies, container, iac, dast]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -108,12 +127,57 @@ jobs:
           echo "Dependencies: ${{ needs.dependencies.result }}"
           echo "Container:    ${{ needs.container.result }}"
           echo "IaC:          ${{ needs.iac.result }}"
+          echo "DAST:         ${{ needs.dast.result }}"
 
           if [ "${{ needs.secrets.result }}" = "failure" ] || \
              [ "${{ needs.container.result }}" = "failure" ] || \
-             [ "${{ needs.iac.result }}" = "failure" ]; then
+             [ "${{ needs.iac.result }}" = "failure" ] || \
+             [ "${{ needs.dast.result }}" = "failure" ]; then
             echo "SECURITY GATE: FAILED - blocking merge"
             exit 1
           fi
 
           echo "SECURITY GATE: PASSED"
+
+  # Report job
+  report:
+    needs: [secrets, sast, dependencies, container, iac, dast]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Comment PR with security results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const r = {
+              secrets:      '${{ needs.secrets.result }}',
+              sast:         '${{ needs.sast.result }}',
+              dependencies: '${{ needs.dependencies.result }}',
+              container:    '${{ needs.container.result }}',
+              iac:          '${{ needs.iac.result }}',
+              dast:         '${{ needs.dast.result }}',
+            };
+            const icon = (s) => s === 'success' ? '✅' : s === 'failure' ? '❌' : '⚠️';
+            const blocked = ['secrets', 'container', 'iac', 'dast'].some(j => r[j] === 'failure');
+            const body = [
+              '## 🔒 Security Pipeline Report',
+              '',
+              '| Scanner | Status |',
+              '|---------|--------|',
+              `| Secrets (Gitleaks) | ${icon(r.secrets)} ${r.secrets} |`,
+              `| SAST (Semgrep) | ${icon(r.sast)} ${r.sast} |`,
+              `| SCA (Trivy FS) | ${icon(r.dependencies)} ${r.dependencies} |`,
+              `| Container (Trivy Image) | ${icon(r.container)} ${r.container} |`,
+              `| IaC (Trivy Config) | ${icon(r.iac)} ${r.iac} |`,
+              `| DAST (ZAP Baseline) | ${icon(r.dast)} ${r.dast} |`,
+              '',
+              blocked
+                ? '> ⛔ **MERGE BLOCKED** — critical security findings detected. Fix all ❌ before merging.'
+                : '> ✅ All security checks passed — safe to merge.',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });

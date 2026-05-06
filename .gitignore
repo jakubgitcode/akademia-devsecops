@@ -1,2 +1,2 @@
-node_modules/*
-config-leaked.env
+mojenv/
+results.sarif
