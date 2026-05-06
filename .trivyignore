@@ -1,0 +1,6 @@
+# .trivyignore
+# Wyjatki od reguly exit-code: 1 dla podatnosci bez dostepnego fixa
+# Format: CVE-ID  [komentarz opcjonalny]
+#
+# Przyklad (odkomentuj i dostosuj gdy Trivy blokuje przez unfixed CVE):
+# CVE-2023-XXXX  # brak fixa w upstream, akceptowane ryzyko, reviw: 2026-06-01

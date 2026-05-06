@@ -1,2 +1,3 @@
 mojenv/
 results.sarif
+config-leaked.env
