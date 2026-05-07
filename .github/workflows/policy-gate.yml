@@ -5,6 +5,7 @@ on:
     paths:
       - 'Dockerfile*'
       - 'k8s/**'
+  workflow_dispatch:
 
 jobs:
   policy-check:
