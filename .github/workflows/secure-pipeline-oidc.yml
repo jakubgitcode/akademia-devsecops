@@ -88,7 +88,8 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::394407950342:role/gh-web-id
+          #role-to-assume: arn:aws:iam::394407950342:role/gh-web-id
+          role-to-assume: arn:aws:iam::394407950342:role/kuba-gh-role
           aws-region: eu-central-1
           audience: sts.amazonaws.com
 
