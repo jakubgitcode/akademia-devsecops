@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::ACCOUNT_ID:role/github-actions-deploy
+          role-to-assume: arn:aws:iam::394407950342:role/gh-web-id
           aws-region: eu-central-1
 
       - name: Verify credentials
