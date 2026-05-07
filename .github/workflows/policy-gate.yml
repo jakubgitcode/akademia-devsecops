@@ -1,0 +1,41 @@
+name: Policy Gate
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile*'
+      - 'k8s/**'
+
+jobs:
+  policy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install conftest
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+          wget -q "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST}/conftest_${LATEST}_Linux_x86_64.tar.gz"
+          tar xzf conftest_*.tar.gz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Test Dockerfile policy
+        run: |
+          echo "=== Dockerfile Policy Check ==="
+          conftest test --policy policy/docker/ Dockerfile
+          for f in Dockerfile.*; do
+            [ -f "$f" ] && conftest test --policy policy/docker/ "$f" || true
+          done
+
+      - name: Test Kubernetes manifests policy
+        run: |
+          echo "=== Kubernetes Policy Check ==="
+          for f in k8s/*.yaml; do
+            echo "--- Checking $f ---"
+            conftest test --policy policy/k8s/ "$f"
+          done
+
+      - name: Run policy unit tests
+        run: |
+          echo "=== Policy Unit Tests ==="
+          conftest verify --policy policy/k8s/
