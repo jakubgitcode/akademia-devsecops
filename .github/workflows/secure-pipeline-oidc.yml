@@ -90,6 +90,7 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::394407950342:role/gh-web-id
           aws-region: eu-central-1
+          audience: sts.amazonaws.com
 
       - name: Verify credentials
         run: aws sts get-caller-identity
