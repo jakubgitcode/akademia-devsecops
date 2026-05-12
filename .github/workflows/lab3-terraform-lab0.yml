@@ -1,0 +1,42 @@
+name: Terraform Lab0 CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lab0/**"
+      - ".github/workflows/lab3-terraform-lab0.yml"
+  pull_request:
+    paths:
+      - "lab0/**"
+      - ".github/workflows/lab3-terraform-lab0.yml"
+  workflow_dispatch:
+
+jobs:
+  terraform-lab0:
+    name: fmt-validate-plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./lab0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      - name: Terraform fmt
+        run: terraform fmt -check
+
+      - name: Terraform init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false -out=tfplan
