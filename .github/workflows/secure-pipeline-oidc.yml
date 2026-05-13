@@ -1,9 +1,10 @@
 name: Secure Pipeline OIDC
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  workflow_dispatch:
 
 # Globalne minimum permissions
 permissions:

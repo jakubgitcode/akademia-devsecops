@@ -1,24 +1,39 @@
 rules:
+  # -------------------------------------------------------
+  # Python - reguly bezpieczenstwa
+  # -------------------------------------------------------
   - id: no-flask-debug
     pattern: app.run(debug=True, ...)
     message: "Flask debug mode must not be enabled in production"
     severity: ERROR
     languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+      owasp: "A05:2021"
 
   - id: no-shell-true
     patterns:
       - pattern: subprocess.check_output(..., shell=True, ...)
       - pattern: subprocess.call(..., shell=True, ...)
       - pattern: subprocess.run(..., shell=True, ...)
-    message: "Avoid shell=True in subprocess - use list of arguments"
+    message: "Avoid shell=True in subprocess - use list of arguments to prevent command injection"
     severity: WARNING
     languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-78"
+      owasp: "A03:2021"
 
   - id: no-pickle-loads
     pattern: pickle.loads(...)
     message: "pickle.loads() is vulnerable to deserialization attacks - use json instead"
     severity: ERROR
     languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      owasp: "A08:2021"
 
   - id: require-parameterized-queries
     patterns:
@@ -29,7 +44,53 @@ rules:
     message: "Use parameterized queries to prevent SQL injection"
     severity: ERROR
     languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      owasp: "A03:2021"
 
+  - id: no-hardcoded-password-python
+    patterns:
+      - pattern: $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(password|passwd|secret|token|api_key|apikey)"
+      - metavariable-regex:
+          metavariable: "\"...\""
+          regex: ".{4,}"
+    message: "Hardcoded credential detected in variable '{{$VAR}}' - use environment variables or secrets manager"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+      owasp: "A07:2021"
+
+  - id: no-yaml-load-unsafe
+    patterns:
+      - pattern: yaml.load($DATA)
+      - pattern: yaml.load($DATA, ...)
+    pattern-not: yaml.load($DATA, Loader=yaml.SafeLoader)
+    message: "yaml.load() without SafeLoader is unsafe - use yaml.safe_load() instead"
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+      owasp: "A08:2021"
+
+  - id: no-assert-in-production
+    pattern: assert $COND
+    message: "assert statements can be disabled with -O flag - use explicit validation instead"
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      cwe: "CWE-617"
+
+  # -------------------------------------------------------
+  # JavaScript/TypeScript - reguly bezpieczenstwa
+  # -------------------------------------------------------
   - id: no-eval
     patterns:
       - pattern-either:
@@ -38,6 +99,10 @@ rules:
     message: "eval() and Function() constructor are dangerous - potential code injection"
     severity: ERROR
     languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-95"
+      owasp: "A03:2021"
 
   - id: no-innerhtml-xss
     patterns:
@@ -48,3 +113,49 @@ rules:
     message: "Direct DOM manipulation can lead to XSS - use textContent or a sanitizer"
     severity: ERROR
     languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      owasp: "A03:2021"
+
+  - id: no-hardcoded-secret-js
+    patterns:
+      - pattern-either:
+          - pattern: const $VAR = "..."
+          - pattern: let $VAR = "..."
+          - pattern: var $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(password|passwd|secret|token|api_key|apikey|private_key)"
+    message: "Hardcoded credential in '{{$VAR}}' - use environment variables"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+      owasp: "A07:2021"
+
+  - id: no-prototype-pollution
+    patterns:
+      - pattern-either:
+          - pattern: $OBJ["__proto__"] = ...
+          - pattern: $OBJ.constructor.prototype = ...
+    message: "Potential prototype pollution - validate object keys before assignment"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1321"
+      owasp: "A08:2021"
+
+  - id: no-path-traversal
+    patterns:
+      - pattern: path.join($BASE, $INPUT)
+      - pattern: fs.readFile($INPUT, ...)
+    message: "Potential path traversal - validate and sanitize user-supplied file paths"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+      owasp: "A01:2021"
