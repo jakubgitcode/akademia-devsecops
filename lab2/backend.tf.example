@@ -1,0 +1,14 @@
+terraform {
+  # Remote backend: Azure Storage Account
+  # Keep this file as a template when starting the lab without a backend.
+  # Enable the backend in backend.tf, then migrate state with:
+  #   terraform init -migrate-state -reconfigure -backend-config=backend.hcl
+  # Backend cannot use variables. Pass values during init or via backend.hcl.
+  backend "azurerm" {
+    storage_account_name = "tflab1sa30vv44"
+    container_name       = "mojstan"
+    key                  = "lab2.terraform.tfstate"
+    resource_group_name  = "tf-lab1-rg30vv44"
+    use_azuread_auth     = true
+  }
+}
