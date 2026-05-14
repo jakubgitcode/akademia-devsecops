@@ -1,7 +1,7 @@
 variable "resource_group_name" {
   description = "Nazwa grupy zasobów."
   type        = string
-  default     = "tf-lab2-rg"
+  default     = "tf-lab2-rg-jm"
 }
 
 variable "storage_account_prefix" {
