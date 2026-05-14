@@ -42,7 +42,7 @@ jobs:
         with:
           log-file: terraform_plan_output.txt
           title: Terraform plan summary
-        ignore_error: true
+        continue-on-error: true
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
