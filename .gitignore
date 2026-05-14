@@ -1,3 +1,8 @@
 mojenv/
 results.sarif
 config-leaked.env
+
+*tfstate*
+*/*tfstate*
+*.terraform
+*/*.terraform
