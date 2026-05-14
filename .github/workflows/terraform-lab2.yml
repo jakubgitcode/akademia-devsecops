@@ -35,7 +35,13 @@ jobs:
         run: terraform init
 
       - name: Terraform Plan
-        run: terraform plan -var-file=dev.tfvars -out=tfplan -no-color
+        run: terraform plan -var-file=dev.tfvars -out=tfplan -no-color 2>&1 | tee terraform_plan_output.txt
+
+      - name: Terraform Plan Summary
+        uses: sgametrio/terraform-summary-action@main
+        with:
+          log-file: terraform_plan_output.txt
+          title: Terraform plan summary
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
