@@ -35,14 +35,18 @@ jobs:
         run: terraform init
 
       - name: Terraform Plan
-        run: terraform plan -var-file=dev.tfvars -out=tfplan -no-color 2>&1 | tee terraform_plan_output.txt
+        run: terraform plan -var-file=dev.tfvars -out=tfplan -no-color
+
+      - name: Terraform Plan JSON
+        run: terraform show -json tfplan > tfplan.json
 
       - name: Terraform Plan Summary
-        uses: sgametrio/terraform-summary-action@main
-        with:
-          log-file: terraform_plan_output.txt
-          title: Terraform plan summary
-        continue-on-error: true
+        run: |
+          {
+            echo "## Terraform plan summary"
+            echo
+            docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/dineshba/tf-summarize tfplan.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Terraform plan artifact
         uses: actions/upload-artifact@v4
