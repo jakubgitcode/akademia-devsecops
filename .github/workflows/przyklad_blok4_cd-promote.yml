@@ -63,7 +63,7 @@ jobs:
       github.event.inputs.target_env == 'all' ||
       github.event.inputs.target_env == 'dev' ||
       github.event.inputs.target_env == ''
-    uses: ./.github/workflows/reusable-tf-plan.yml
+    uses: ./.github/workflows/przyklad_blok4_reusable-tf-plan.yml
     with:
       environment: dev
     secrets:
@@ -113,7 +113,7 @@ jobs:
       github.event.inputs.target_env == 'all' ||
       github.event.inputs.target_env == 'test' ||
       github.event.inputs.target_env == ''
-    uses: ./.github/workflows/reusable-tf-plan.yml
+    uses: ./.github/workflows/przyklad_blok4_reusable-tf-plan.yml
     with:
       environment: test
     secrets:
@@ -163,7 +163,7 @@ jobs:
       github.event.inputs.target_env == 'all' ||
       github.event.inputs.target_env == 'prod' ||
       github.event.inputs.target_env == ''
-    uses: ./.github/workflows/reusable-tf-plan.yml
+    uses: ./.github/workflows/przyklad_blok4_reusable-tf-plan.yml
     with:
       environment: prod
     secrets:
