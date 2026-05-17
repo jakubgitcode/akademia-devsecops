@@ -12,6 +12,7 @@ on:
     paths:
       - 'przyklad_blok4/infra/**'
       - 'przyklad_blok4/.tflint.hcl'
+  workflow_dispatch:
 
 permissions:
   id-token: write
