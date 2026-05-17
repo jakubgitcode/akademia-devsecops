@@ -1,6 +1,6 @@
 environment = "dev"
 location    = "Poland Central"
-vm_size     = "Standard_B2s"
+vm_size     = "Standard_B2as_v2"
 
 linux_vm_count = 2
 
