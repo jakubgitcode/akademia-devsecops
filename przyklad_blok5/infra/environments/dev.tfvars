@@ -10,6 +10,9 @@ subnets = {
   db = {
     address_prefixes = ["10.10.2.0/24"]
   }
+  test = {
+    address_prefixes = ["10.10.3.0/24"]
+  }
 }
 
 tags = {
