@@ -1,8 +1,8 @@
 environment = "dev"
-location    = "Poland Central"
+location    = "West Europe"
 
 # VM — mniejsze i tańsze w dev
-vm_size  = "Standard_B2s"
+vm_size  = "Standard_B2as_v2"
 vm_count = 1
 
 # Patching — częstsze, agresywne

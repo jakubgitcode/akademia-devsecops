@@ -1,8 +1,8 @@
 environment = "prod"
-location    = "Poland Central"
+location    = "West Europe"
 
 # VM — większe, więcej instancji
-vm_size  = "Standard_D4s_v5"
+vm_size  = "Standard_B2as_v2"
 vm_count = 3
 
 # Patching — 2. niedziela miesiąca (po Patch Tuesday + bufor)
