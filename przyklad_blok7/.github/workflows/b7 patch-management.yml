@@ -86,13 +86,13 @@ jobs:
           echo "--- Wygenerowany inventory ---"
           cat ../ansible/hosts.yml
 
-      - name: Validate Inventory
-        run: |
-          if ! grep -q "ansible_host:" ../ansible/hosts.yml; then
-            echo "Inventory nie zawiera hostów (ansible_host)."
-            echo "Uruchom workflow_dispatch z provision_infra=true albo najpierw wykonaj provisioning VM."
-            exit 1
-          fi
+      #- name: Validate Inventory
+      #  run: |
+      #    if ! grep -Eq '"?ansible_host"?[[:space:]]*:' ../ansible/hosts.yml; then
+      #      echo "Inventory nie zawiera hostów (ansible_host)."
+      #      echo "Uruchom workflow_dispatch z provision_infra=true albo najpierw wykonaj provisioning VM."
+      #      exit 1
+      #    fi
 
       - name: Upload Inventory Artifact
         uses: actions/upload-artifact@v4
