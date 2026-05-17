@@ -1,0 +1,6 @@
+# Trivy ignore file — uzasadnione wyjątki
+# Format: <rule-id> — komentarz z uzasadnieniem
+
+# Storage account nie wymaga private endpoint w szkoleniowym środowisku
+# W produkcji: ZAWSZE dodaj private endpoint!
+# AVD-AZU-0010

@@ -1,0 +1,129 @@
+name: 'CI — Terratest (integration tests)'
+
+# ==================================================
+# Terratest — testy integracyjne Go
+#
+# - Plan-only test: uruchamiany na każdym PR (bez Azure)
+# - Full integration test: workflow_dispatch + po merge
+# ==================================================
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'przyklad_blok4/infra/**'
+      - 'przyklad_blok4/test/**'
+  push:
+    branches: [main]
+    paths:
+      - 'przyklad_blok4/infra/**'
+      - 'przyklad_blok4/test/**'
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: 'Uruchom pełne testy integracyjne (deploy + verify + destroy)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  GO_VERSION: '1.23'
+  TF_VERSION: '1.11'
+  TEST_DIR: ./przyklad_blok4/test
+
+jobs:
+  # ==========================================
+  # Plan-only test — bez Azure credentials
+  # ==========================================
+  plan-test:
+    name: '🧪 Terratest — Plan Only'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./przyklad_blok4/test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: przyklad_blok4/test/go.sum
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false   # Terratest wymaga czystego binarki
+
+      - name: Go mod download
+        run: go mod download
+
+      - name: Run Plan-Only Tests
+        run: go test -v -timeout 10m -run TestTerraformPlanOnly ./...
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## 🧪 Terratest — Plan Only" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Testy strukturalne (plan offline) — **nie wymagają Azure**." >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # Full integration test — wymaga Azure OIDC
+  # ==========================================
+  integration-test:
+    name: '🔬 Terratest — Integration'
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.run_integration == 'true' ||
+      github.event_name == 'push'
+    needs: [plan-test]
+    environment: test-terratest        # Osobne environment z OIDC credentials
+    defaults:
+      run:
+        working-directory: ./przyklad_blok4/test
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_USE_OIDC: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: przyklad_blok4/test/go.sum
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Go mod download
+        run: go mod download
+
+      - name: Run Integration Tests
+        run: go test -v -timeout 30m -run TestTerraformApplyAndVerify ./...
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## 🔬 Terratest — Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pełne testy integracyjne: deploy → verify → destroy." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: **test-terratest**" >> $GITHUB_STEP_SUMMARY

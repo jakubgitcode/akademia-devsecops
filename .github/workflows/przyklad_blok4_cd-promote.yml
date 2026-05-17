@@ -1,0 +1,210 @@
+name: 'b4 CD — Promote (dev → test → prod)'
+
+# ==================================================
+# Gate 3: Plan per environment
+# Gate 4: Apply z approval (per environment)
+#
+# Strategia: deploy sekwencyjny dev → test → prod
+# - dev: auto-apply (szybki feedback)
+# - test: auto-apply + security gate (z CI)
+# - prod: apply TYLKO po approval w GitHub Environment
+# ==================================================
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'przyklad_blok4/infra/**'
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Środowisko docelowe (deploy TYLKO do wybranego)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - dev
+          - test
+          - prod
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+  ARM_USE_OIDC: "true"
+  TF_WORKING_DIR: ./przyklad_blok4/infra
+
+jobs:
+
+  test-credentials:
+    name: '🔐 Test Azure Credentials'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login Test
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          #subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          allow-no-subscriptions: true
+    continue-on-error: true
+
+  # ==========================================
+  # DEV — auto plan + auto apply
+  # ==========================================
+  plan-dev:
+    name: '📋 Plan DEV'
+    if: >-
+      github.event.inputs.target_env == 'all' ||
+      github.event.inputs.target_env == 'dev' ||
+      github.event.inputs.target_env == ''
+    uses: ./.github/workflows/reusable-tf-plan.yml
+    with:
+      environment: dev
+    secrets:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+  apply-dev:
+    name: '🚀 Apply DEV'
+    needs: [plan-dev]
+    runs-on: ubuntu-latest
+    environment: dev               # Bez approval (auto-deploy)
+    defaults:
+      run:
+        working-directory: ./przyklad_blok4/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-dev-${{ github.sha }}
+          path: ./przyklad_blok4/infra
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=blok4/dev.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve dev.tfplan
+
+      - name: Apply Summary
+        run: |
+          echo "## 🚀 DEV Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # TEST — plan + auto apply (po sukcesie dev)
+  # ==========================================
+  plan-test:
+    name: '📋 Plan TEST'
+    needs: [apply-dev]
+    if: >-
+      github.event.inputs.target_env == 'all' ||
+      github.event.inputs.target_env == 'test' ||
+      github.event.inputs.target_env == ''
+    uses: ./.github/workflows/reusable-tf-plan.yml
+    with:
+      environment: test
+    secrets:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+  apply-test:
+    name: '🚀 Apply TEST'
+    needs: [plan-test]
+    runs-on: ubuntu-latest
+    environment: test              # Bez approval (auto-deploy)
+    defaults:
+      run:
+        working-directory: ./przyklad_blok4/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-test-${{ github.sha }}
+          path: ./przyklad_blok4/infra
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=blok4/test.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve test.tfplan
+
+      - name: Apply Summary
+        run: |
+          echo "## 🚀 TEST Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================
+  # PROD — plan + apply Z APPROVAL
+  # ==========================================
+  plan-prod:
+    name: '📋 Plan PROD'
+    needs: [apply-test]
+    if: >-
+      github.event.inputs.target_env == 'all' ||
+      github.event.inputs.target_env == 'prod' ||
+      github.event.inputs.target_env == ''
+    uses: ./.github/workflows/reusable-tf-plan.yml
+    with:
+      environment: prod
+    secrets:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+
+  apply-prod:
+    name: '🚀 Apply PROD'
+    needs: [plan-prod]
+    runs-on: ubuntu-latest
+    environment: production        # ← WYMAGA APPROVAL!
+    defaults:
+      run:
+        working-directory: ./przyklad_blok4/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prod-${{ github.sha }}
+          path: ./przyklad_blok4/infra
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=blok4/prod.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve prod.tfplan
+
+      - name: Production Deploy Summary
+        run: |
+          echo "## 🚀 PRODUCTION Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parametr | Wartość |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Środowisko | **production** |" >> $GITHUB_STEP_SUMMARY

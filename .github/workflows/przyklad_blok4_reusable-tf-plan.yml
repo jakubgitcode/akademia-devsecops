@@ -1,0 +1,101 @@
+# ==================================================
+# Reusable Workflow: Terraform Plan
+# ==================================================
+# Wywoływany z cd-promote.yml dla każdego środowiska.
+# Pozwala uniknąć duplikacji kodu pipeline.
+
+name: 'b4 Reusable — Terraform Plan'
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target environment (dev, test, prod)'
+        required: true
+        type: string
+      working_directory:
+        description: 'Terraform working directory'
+        required: false
+        type: string
+        default: './przyklad_blok4/infra'
+    secrets:
+      ARM_CLIENT_ID:
+        required: true
+      ARM_SUBSCRIPTION_ID:
+        required: true
+      ARM_TENANT_ID:
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  plan:
+    name: 'Plan (${{ inputs.environment }})'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    env:
+      ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+      ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+      ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+      ARM_USE_OIDC: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        env:
+          TF_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          terraform init \
+            -backend-config="key=blok4/${TF_ENVIRONMENT}.terraform.tfstate"
+
+      - name: Terraform Plan
+        id: plan
+        env:
+          TF_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set +e
+          terraform plan \
+            -detailed-exitcode \
+            -no-color \
+            -var-file="environments/${TF_ENVIRONMENT}.tfvars" \
+            -out="${TF_ENVIRONMENT}.tfplan" \
+            2>&1 | tee plan_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Plan Summary
+        if: always()
+        env:
+          TF_ENVIRONMENT: ${{ inputs.environment }}
+          TF_PLAN_EXIT_CODE: ${{ steps.plan.outputs.exit_code }}
+        run: |
+          echo "## 📋 Plan: ${TF_ENVIRONMENT}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Exit code: \`${TF_PLAN_EXIT_CODE}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```hcl' >> "$GITHUB_STEP_SUMMARY"
+          tail -30 plan_output.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Plan Artifact
+        if: steps.plan.outputs.exit_code != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.sha }}
+          path: |
+            ${{ inputs.working_directory }}/${{ inputs.environment }}.tfplan
+            ${{ inputs.working_directory }}/plan_output.txt
+          retention-days: 7
+
+      - name: Fail on error
+        if: steps.plan.outputs.exit_code == '1'
+        run: exit 1
