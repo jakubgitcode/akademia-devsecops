@@ -86,6 +86,11 @@ jobs:
           echo "--- Wygenerowany inventory ---"
           cat ../ansible/hosts.yml
 
+      - name: Export SSH Private Key
+        run: |
+          terraform output -raw ssh_private_key > ../ansible/ssh_key
+          chmod 600 ../ansible/ssh_key
+
       #- name: Validate Inventory
       #  run: |
       #    if ! grep -q "ansible_host:" ../ansible/hosts.yml; then
@@ -98,7 +103,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ansible-inventory
-          path: przyklad_blok7/ansible/hosts.yml
+          path: |
+            przyklad_blok7/ansible/hosts.yml
+            przyklad_blok7/ansible/ssh_key
           retention-days: 1
 
   # ==========================================
@@ -130,6 +137,10 @@ jobs:
       - name: Ansible Lint
         run: ansible-lint "$PLAYBOOK" || true
 
+      - name: Prepare SSH Key
+        run: |
+          chmod 600 ssh_key
+
       - name: Run Ansible Playbook
         run: |
           EXTRA_ARGS=""
@@ -142,6 +153,7 @@ jobs:
 
           ansible-playbook "$PLAYBOOK" \
             -i hosts.yml \
+            --private-key ssh_key \
             $EXTRA_ARGS \
             --become \
             -v \
