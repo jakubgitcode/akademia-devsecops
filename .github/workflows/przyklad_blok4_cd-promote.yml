@@ -1,4 +1,4 @@
-name: 'b4 CD — Promote (dev → test → prod)'
+name: 'b4 CD — Promote (dev | test | prod)'
 
 # ==================================================
 # Gate 3: Plan per environment
