@@ -1,0 +1,56 @@
+name: Pin GitHub Actions
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "**/action.yml"
+      - "**/action.yaml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tryb uruchomienia"
+        required: true
+        default: "check"
+        type: choice
+        options:
+          - check
+          - fix
+
+jobs:
+  pinact-check:
+    if: github.event_name == 'pull_request' || github.event.inputs.mode == 'check'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate action pinning
+        uses: suzuki-shunsuke/pinact-action@v2.0.0
+        with:
+          skip_push: "true"
+          verify: "true"
+
+  pinact-fix:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'fix'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.BOT_GITHUB_TOKEN }}
+
+      - name: Pin and update action SHAs
+        uses: suzuki-shunsuke/pinact-action@v2.0.0
+        with:
+          github_token: ${{ secrets.BOT_GITHUB_TOKEN }}
+          update: "true"
+          verify: "true"

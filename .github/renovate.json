@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "enabledManagers": [
+    "github-actions"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github-actions-digest-pinning"
+    }
+  ],
+  "labels": [
+    "dependencies",
+    "github-actions"
+  ],
+  "prConcurrentLimit": 5
+}
