@@ -43,6 +43,7 @@ jobs:
       ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
       ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
       ARM_USE_OIDC: "true"
+      TF_ENVIRONMENT: "${{ inputs.environment }}"
 
     steps:
       - uses: actions/checkout@v4
@@ -52,16 +53,12 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform Init
-        env:
-          TF_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           terraform init \
             -backend-config="key=blok4/${TF_ENVIRONMENT}.terraform.tfstate"
 
       - name: Terraform Plan
         id: plan
-        env:
-          TF_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set +e
           terraform plan \
@@ -73,7 +70,9 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Terraform Plan JSON
-        run: terraform show -json ${TF_ENVIRONMENT}.tfplan > tfplan.json
+        env:
+          PLAN_FILE: "${{ inputs.environment }}.tfplan"
+        run: terraform show -json "$PLAN_FILE" > tfplan.json
 
       - name: Terraform Plan Summary
         run: |

@@ -35,6 +35,7 @@ func TestTerraformPlanOnly(t *testing.T) {
 	terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
 		TerraformDir: "../infra",
 		VarFiles:     []string{"environments/dev.tfvars"},
+		PlanFilePath: "dev.tfplan",
 		// Plan offline — bez backendu
 		BackendConfig: map[string]interface{}{},
 		NoColor:       true,
