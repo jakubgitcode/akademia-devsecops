@@ -45,11 +45,24 @@ jobs:
   plan-test:
     name: '🧪 Terratest — Plan Only'
     runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_USE_OIDC: 'true'
     defaults:
       run:
         working-directory: ./przyklad_blok4/test
     steps:
       - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC, trusted events only)
+        if: github.event_name != 'pull_request'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
 
       - uses: actions/setup-go@v5
         with:
