@@ -1,4 +1,4 @@
-name: 'b7 Patch Management (Terraform → Ansible)'
+name: 'b7 Patch Management (Terraform | Ansible)'
 
 on:
   schedule:
@@ -22,12 +22,20 @@ on:
           - patch_linux.yml
           - patch_windows.yml
           - rolling_update.yml
+      provision_infra:
+        description: 'Wykonaj terraform apply przed patchowaniem (tworzy/aktualizuje VM)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   id-token: write
   contents: read
 
-env::
+env:
   ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
   ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
   ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
@@ -50,6 +58,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -61,11 +76,23 @@ jobs:
       - name: Terraform Plan (verify state)
         run: terraform plan -var-file=environments/dev.tfvars -no-color
 
+      - name: Terraform Apply (optional)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.provision_infra == 'true'
+        run: terraform apply -auto-approve -var-file=environments/dev.tfvars -no-color
+
       - name: Export Ansible Inventory
         run: |
           terraform output -raw ansible_inventory > ../ansible/hosts.yml
           echo "--- Wygenerowany inventory ---"
           cat ../ansible/hosts.yml
+
+      - name: Validate Inventory
+        run: |
+          if ! grep -q "ansible_host:" ../ansible/hosts.yml; then
+            echo "Inventory nie zawiera hostów (ansible_host)."
+            echo "Uruchom workflow_dispatch z provision_infra=true albo najpierw wykonaj provisioning VM."
+            exit 1
+          fi
 
       - name: Upload Inventory Artifact
         uses: actions/upload-artifact@v4
@@ -97,22 +124,23 @@ jobs:
 
       - name: Install Ansible
         run: |
+          python -m pip install --upgrade pip
           pip install ansible ansible-lint
 
       - name: Ansible Lint
-        run: ansible-lint ${{ env.PLAYBOOK }} || true
+        run: ansible-lint "$PLAYBOOK" || true
 
       - name: Run Ansible Playbook
         run: |
           EXTRA_ARGS=""
-          if [ "${{ env.DRY_RUN }}" = "true" ]; then
+          if [ "$DRY_RUN" = "true" ]; then
             EXTRA_ARGS="--check --diff"
             echo "🔍 DRY-RUN MODE — no changes will be applied"
           else
             echo "⚡ LIVE MODE — changes will be applied"
           fi
 
-          ansible-playbook ${{ env.PLAYBOOK }} \
+          ansible-playbook "$PLAYBOOK" \
             -i hosts.yml \
             $EXTRA_ARGS \
             --become \
