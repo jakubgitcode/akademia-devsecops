@@ -1,4 +1,4 @@
-name: 'b7 Patch Management (Terraform → Ansible)'
+name: 'b7 Patch Management (Terraform | Ansible)'
 
 on:
   schedule:
@@ -27,7 +27,7 @@ permissions:
   id-token: write
   contents: read
 
-env::
+env:
   ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
   ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
   ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
