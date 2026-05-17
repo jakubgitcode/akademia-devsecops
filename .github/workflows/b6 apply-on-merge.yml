@@ -12,6 +12,15 @@ on:
     paths:
       - 'przyklad_blok6/**'
       - '!przyklad_blok6/README.md'
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Środowisko docelowe (deploy TYLKO do wybranego)'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
 
 permissions:
   id-token: write
