@@ -23,6 +23,48 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func terraformAuthEnv() map[string]string {
+	env := map[string]string{}
+
+	passThrough := []string{
+		"ARM_CLIENT_ID",
+		"ARM_TENANT_ID",
+		"ARM_SUBSCRIPTION_ID",
+		"ARM_USE_OIDC",
+		"ARM_USE_AZUREAD",
+		"ARM_USE_CLI",
+		"ACTIONS_ID_TOKEN_REQUEST_URL",
+		"ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+	}
+
+	for _, key := range passThrough {
+		if value := os.Getenv(key); value != "" {
+			env[key] = value
+		}
+	}
+
+	// Fallback aliasing for Terraform versions that read ARM_OIDC_* names.
+	if env["ARM_OIDC_REQUEST_URL"] == "" && env["ACTIONS_ID_TOKEN_REQUEST_URL"] != "" {
+		env["ARM_OIDC_REQUEST_URL"] = env["ACTIONS_ID_TOKEN_REQUEST_URL"]
+	}
+	if env["ARM_OIDC_REQUEST_TOKEN"] == "" && env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"] != "" {
+		env["ARM_OIDC_REQUEST_TOKEN"] = env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+	}
+
+	// Keep backend auth mode deterministic in CI.
+	if env["ARM_USE_OIDC"] == "" {
+		env["ARM_USE_OIDC"] = "true"
+	}
+	if env["ARM_USE_AZUREAD"] == "" {
+		env["ARM_USE_AZUREAD"] = "true"
+	}
+	if env["ARM_USE_CLI"] == "" {
+		env["ARM_USE_CLI"] = "false"
+	}
+
+	return env
+}
+
 // =====================================================
 // Test 1: Plan-only (bez deploymentu)
 //
@@ -41,7 +83,8 @@ func TestTerraformPlanOnly(t *testing.T) {
 		TerraformDir: "../infra",
 		VarFiles:     []string{"environments/dev.tfvars"},
 		PlanFilePath: "dev.tfplan",
-		NoColor:       true,
+		NoColor:      true,
+		EnvVars:      terraformAuthEnv(),
 	})
 
 	// Init + Plan (nie aplikuje)
@@ -128,6 +171,7 @@ func TestTerraformApplyAndVerify(t *testing.T) {
 		// Backend lokalny dla testów
 		BackendConfig: map[string]interface{}{},
 		NoColor:       true,
+		EnvVars:       terraformAuthEnv(),
 	})
 
 	// Cleanup — destroy po zakończeniu testów
