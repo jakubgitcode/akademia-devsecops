@@ -27,21 +27,19 @@ import (
 //
 // Weryfikuje, że konfiguracja jest poprawna składniowo,
 // plan generuje oczekiwane zasoby i nie ma błędów.
-// NIE wymaga Azure credentials.
+// Wymaga backendu azurerm; jeśli brak ARM_* env, test jest pomijany.
 // =====================================================
 func TestTerraformPlanOnly(t *testing.T) {
 	t.Parallel()
+
+	if os.Getenv("ARM_CLIENT_ID") == "" || os.Getenv("ARM_TENANT_ID") == "" || os.Getenv("ARM_SUBSCRIPTION_ID") == "" {
+		t.Skip("Brak ARM_* credentials — pomijam TestTerraformPlanOnly (backend azurerm)")
+	}
 
 	terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
 		TerraformDir: "../infra",
 		VarFiles:     []string{"environments/dev.tfvars"},
 		PlanFilePath: "dev.tfplan",
-		EnvVars: map[string]string{
-			// Wymuś lokalny init dla testu plan-only (bez Azure backend/auth)
-			"TF_CLI_ARGS_init": "-backend=false",
-		},
-		// Plan offline — bez backendu
-		BackendConfig: map[string]interface{}{},
 		NoColor:       true,
 	})
 

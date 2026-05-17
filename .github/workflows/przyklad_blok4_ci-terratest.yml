@@ -40,7 +40,7 @@ env:
 
 jobs:
   # ==========================================
-  # Plan-only test — bez Azure credentials
+  # Plan-only test — składnia + plan (backend azurerm)
   # ==========================================
   plan-test:
     name: '🧪 Terratest — Plan Only'
@@ -56,8 +56,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Azure Login (OIDC, trusted events only)
-        if: github.event_name != 'pull_request'
+      - name: Azure Login (OIDC)
+        if: env.ARM_CLIENT_ID != '' && env.ARM_TENANT_ID != '' && env.ARM_SUBSCRIPTION_ID != ''
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.ARM_CLIENT_ID }}
@@ -87,7 +87,7 @@ jobs:
         run: |
           echo "## 🧪 Terratest — Plan Only" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Testy strukturalne (plan offline) — **nie wymagają Azure**." >> $GITHUB_STEP_SUMMARY
+          echo "Testy planu Terraform (azurerm backend)." >> $GITHUB_STEP_SUMMARY
 
   # ==========================================
   # Full integration test — wymaga Azure OIDC

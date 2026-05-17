@@ -6,6 +6,17 @@ on:
     paths:
       - 'przyklad_blok6/**'
       - '!przyklad_blok6/README.md'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Środowisko docelowe (plan dla wybranego)'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
 
 permissions:
   id-token: write
