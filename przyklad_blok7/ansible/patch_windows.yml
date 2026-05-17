@@ -1,0 +1,78 @@
+---
+# =====================================================
+# Playbook: Patching Windows
+# =====================================================
+# Instaluje SecurityUpdates i CriticalUpdates.
+# Kontroluje reboot osobno (multi-reboot scenario).
+# serial: 1 — Windows rebootuje się wolno.
+
+- name: Patch Windows servers
+  hosts: windows
+  serial: 1
+  gather_facts: true
+
+  tasks:
+    # --- Runda 1: Instalacja patchy ---
+    - name: Install Windows updates (without auto-reboot)
+      ansible.windows.win_updates:
+        category_names:
+          - CriticalUpdates
+          - SecurityUpdates
+        state: installed
+        reboot: false
+      register: update_result
+
+    - name: Display installed updates
+      ansible.builtin.debug:
+        msg: |
+          Zainstalowano {{ update_result.installed_update_count | default(0) }} aktualizacji:
+          {% for update in update_result.updates | dict2items %}
+          - {{ update.value.title }} ({{ update.value.kb }})
+          {% endfor %}
+      when: update_result.installed_update_count | default(0) > 0
+
+    # --- Kontrolowany reboot ---
+    - name: Reboot if required (round 1)
+      ansible.windows.win_reboot:
+        reboot_timeout: 1200
+        post_reboot_delay: 120
+      when: update_result.reboot_required | default(false)
+
+    # --- Runda 2: Sprawdzenie kolejnych aktualizacji (multi-reboot) ---
+    - name: Check for additional updates after reboot
+      ansible.windows.win_updates:
+        category_names:
+          - CriticalUpdates
+          - SecurityUpdates
+        state: searched
+      register: remaining_updates
+      when: update_result.reboot_required | default(false)
+
+    - name: Install remaining updates
+      ansible.windows.win_updates:
+        category_names:
+          - CriticalUpdates
+          - SecurityUpdates
+        state: installed
+        reboot: false
+      register: update_result_r2
+      when:
+        - remaining_updates is defined
+        - remaining_updates.found_update_count | default(0) > 0
+
+    - name: Final reboot if needed
+      ansible.windows.win_reboot:
+        reboot_timeout: 1200
+        post_reboot_delay: 120
+      when:
+        - update_result_r2 is defined
+        - update_result_r2.reboot_required | default(false)
+
+    # --- Podsumowanie ---
+    - name: Patch summary
+      ansible.builtin.debug:
+        msg: |
+          HOST: {{ inventory_hostname }}
+          Runda 1: {{ update_result.installed_update_count | default(0) }} patchy
+          Runda 2: {{ update_result_r2.installed_update_count | default(0) }} patchy
+          Status: COMPLETED

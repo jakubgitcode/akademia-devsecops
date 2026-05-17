@@ -1,0 +1,80 @@
+---
+# =====================================================
+# Playbook: Patching Linux (Debian/Ubuntu + RHEL)
+# =====================================================
+# Obsługuje obie rodziny OS z warunkowym reboot.
+# Idempotentny — bezpieczny do wielokrotnego uruchomienia.
+
+- name: Patch Linux servers
+  hosts: linux
+  become: true
+  gather_facts: true
+
+  tasks:
+    # --- Debian/Ubuntu ---
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+
+    - name: Upgrade packages (Debian/Ubuntu — safe)
+      ansible.builtin.apt:
+        upgrade: safe
+      register: apt_result
+      when: ansible_os_family == "Debian"
+
+    - name: Display updated packages (Debian)
+      ansible.builtin.debug:
+        msg: "Zaktualizowano {{ apt_result.stdout_lines | length }} pakietów"
+      when:
+        - ansible_os_family == "Debian"
+        - apt_result.changed
+
+    # --- RHEL/CentOS ---
+    - name: Upgrade security packages (RHEL/CentOS)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest    # noqa: package-latest — celowo: patchowanie
+        security: true
+      register: dnf_result
+      when: ansible_os_family == "RedHat"
+
+    # --- Sprawdzenie potrzeby reboot ---
+    - name: Check reboot required (Debian)
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_file_debian
+      when: ansible_os_family == "Debian"
+
+    - name: Check reboot required (RHEL)
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_check_rhel
+      changed_when: false
+      failed_when: false
+      when: ansible_os_family == "RedHat"
+
+    - name: Set reboot_needed fact
+      ansible.builtin.set_fact:
+        reboot_needed: >-
+          {{
+            (ansible_os_family == "Debian" and
+              reboot_file_debian.stat.exists | default(false)) or
+            (ansible_os_family == "RedHat" and
+              reboot_check_rhel.rc | default(0) == 1)
+          }}
+
+    # --- Warunkowy reboot ---
+    - name: Reboot if required
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        test_command: uptime
+      when: reboot_needed | bool
+
+    # --- Logowanie wyniku ---
+    - name: Log patch result
+      ansible.builtin.lineinfile:
+        path: /var/log/patch_result.txt
+        line: "{{ ansible_date_time.iso8601 }} | HOST={{ inventory_hostname }} | REBOOT={{ reboot_needed }} | STATUS=OK"
+        create: true
+        mode: "0644"

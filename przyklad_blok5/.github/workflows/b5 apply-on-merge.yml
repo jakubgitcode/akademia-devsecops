@@ -1,0 +1,171 @@
+name: 'b5 Terraform Apply (on merge to main)'
+
+# ==================================================
+# Dwuetapowy deploy:
+#   1. Plan → upload artifact (automatycznie)
+#   2. Apply z TEGO SAMEGO planu → po approval
+#
+# Gwarancja: apply wykonuje DOKŁADNIE to, co było
+# zaplanowane i zatwierdzone — żadnych niespodzianek.
+# ==================================================
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'przyklad_blok5/infra/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+  ARM_USE_OIDC: "true"
+  TF_WORKING_DIR: ./przyklad_blok5/infra
+
+jobs:
+  # ==========================================
+  # Etap 1: Plan + upload artifact
+  # Uruchamia się automatycznie po merge.
+  # ==========================================
+  plan:
+    name: '📋 Plan PROD'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./przyklad_blok5/infra
+    outputs:
+      plan_exit_code: ${{ steps.plan.outputs.exitcode }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan \
+            -no-color \
+            -detailed-exitcode \
+            -var-file=environments/prod.tfvars \
+            -out=prod.tfplan \
+            2>&1 | tee plan_output.txt
+          EXIT_CODE=${PIPESTATUS[0]}
+          echo "exitcode=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          # exit 0 = no changes, 1 = error, 2 = changes present
+          if [[ $EXIT_CODE -eq 1 ]]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+
+      - name: Convert Plan to JSON
+        if: steps.plan.outputs.exitcode == '2'
+        run: terraform show -json prod.tfplan > tfplan.json
+
+      - name: Terraform Plan Summary
+        if: steps.plan.outputs.exitcode == '2'
+        run: |
+          {
+            echo "## Terraform plan summary"
+            echo
+            docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/dineshba/tf-summarize tfplan.json
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Plan Artifact
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prod-${{ github.sha }}
+          path: |
+            przyklad_blok5/infra/prod.tfplan
+            przyklad_blok5/infra/plan_output.txt
+          retention-days: 5
+
+      - name: Plan Summary
+        if: always()
+        run: |
+          EXIT_CODE="${{ steps.plan.outputs.exitcode }}"
+          echo "## 📋 Terraform Plan — PROD" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "$EXIT_CODE" == "0" ]]; then
+            echo "✅ **Brak zmian** — infrastruktura jest aktualna." >> $GITHUB_STEP_SUMMARY
+          elif [[ "$EXIT_CODE" == "2" ]]; then
+            echo "⚠️ **Wykryto zmiany** — plan zapisany jako artifact." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Plan czeka na **approval** w environment \`production\`." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>Plan output</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -200 plan_output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Plan failed** — sprawdź logi." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # ==========================================
+  # Etap 2: Apply z zapisanego planu
+  # Wymaga approval w GitHub Environment.
+  # Pobiera DOKŁADNIE ten sam plan artifact.
+  # ==========================================
+  apply:
+    name: '🚀 Apply PROD'
+    needs: [plan]
+    if: needs.plan.outputs.plan_exit_code == '2'
+    runs-on: ubuntu-latest
+    environment: production       # ← Wymaga approval (GitHub Environment)
+    defaults:
+      run:
+        working-directory: ./przyklad_blok5/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prod-${{ github.sha }}
+          path: ./przyklad_blok5/infra
+
+      - name: Verify Plan File Exists
+        run: |
+          if [[ ! -f prod.tfplan ]]; then
+            echo "::error::Plan artifact not found — cannot proceed"
+            exit 1
+          fi
+          echo "✅ Plan artifact found: prod.tfplan"
+          ls -la prod.tfplan
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply (saved plan)
+        run: terraform apply -auto-approve prod.tfplan
+
+      - name: Apply Summary
+        if: always()
+        run: |
+          echo "## ✅ Terraform Apply — PROD" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parametr | Wartość |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Środowisko | \`prod\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Actor | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Plan artifact | \`tfplan-prod-${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

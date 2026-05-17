@@ -1,0 +1,113 @@
+---
+# =====================================================
+# Playbook: Rolling Patch Update z Canary Pattern
+# =====================================================
+# Strategia: serial: [1, "30%", "100%"]
+#   Ring 0 (canary): 1 host
+#   Ring 1 (batch):  30% hostów
+#   Ring 2 (broad):  reszta
+#
+# Safety: max_fail_percentage: 10
+# Rescue: restart aplikacji + fail przy błędzie
+
+- name: Rolling patch update (canary → batch → broad)
+  hosts: linux
+  become: true
+  gather_facts: true
+  serial:
+    - 1          # Ring 0: canary — 1 host
+    - "30%"      # Ring 1: batch — 30% hostów
+    - "100%"     # Ring 2: broad — reszta
+  max_fail_percentage: 10
+
+  tasks:
+    - name: Patch block (with rescue)
+      block:
+        # --- Pre-patch health check ---
+        - name: Pre-patch health check
+          ansible.builtin.uri:
+            url: "http://localhost:8080/health"
+            status_code: 200
+            timeout: 10
+          register: pre_health
+          ignore_errors: true
+
+        - name: Log pre-patch status
+          ansible.builtin.debug:
+            msg: "Pre-patch health: {{ 'OK' if pre_health is succeeded else 'SKIP (no app)' }}"
+
+        # --- Aktualizacja pakietów ---
+        - name: Update packages (apt safe upgrade)
+          ansible.builtin.apt:
+            upgrade: safe
+            update_cache: true
+            cache_valid_time: 3600
+          when: ansible_os_family == "Debian"
+
+        - name: Update packages (dnf security)
+          ansible.builtin.dnf:
+            name: "*"
+            state: latest    # noqa: package-latest
+            security: true
+          when: ansible_os_family == "RedHat"
+
+        # --- Sprawdzenie reboot ---
+        - name: Check if reboot required
+          ansible.builtin.stat:
+            path: /var/run/reboot-required
+          register: reboot_file
+
+        - name: Reboot if needed
+          ansible.builtin.reboot:
+            reboot_timeout: 300
+            test_command: uptime
+          when: reboot_file.stat.exists | default(false)
+
+        # --- Post-patch health check ---
+        - name: Post-patch health check
+          ansible.builtin.uri:
+            url: "http://localhost:8080/health"
+            status_code: 200
+            timeout: 10
+          retries: 5
+          delay: 15
+          register: post_health
+          ignore_errors: true
+
+        - name: Verify health after patch
+          ansible.builtin.debug:
+            msg: "Post-patch health: {{ 'OK' if post_health is succeeded else 'WARN: app not responding' }}"
+
+      rescue:
+        # --- Rollback: restart aplikacji ---
+        - name: "RESCUE: Restart application"
+          ansible.builtin.systemd:
+            name: myapp
+            state: restarted
+          ignore_errors: true
+
+        - name: "RESCUE: Wait for app to start"
+          ansible.builtin.wait_for:
+            port: 8080
+            timeout: 60
+          ignore_errors: true
+
+        - name: "RESCUE: Log failure"
+          ansible.builtin.lineinfile:
+            path: /var/log/patch_result.txt
+            line: "{{ ansible_date_time.iso8601 }} | HOST={{ inventory_hostname }} | STATUS=FAILED | RESCUE=attempted"
+            create: true
+            mode: "0644"
+
+        - name: "RESCUE: Fail to stop rolling update"
+          ansible.builtin.fail:
+            msg: "Patching failed on {{ inventory_hostname }} — rolling update STOPPED."
+
+      always:
+        # --- Zawsze loguj wynik ---
+        - name: Log patch attempt
+          ansible.builtin.lineinfile:
+            path: /var/log/patch_result.txt
+            line: "{{ ansible_date_time.iso8601 }} | HOST={{ inventory_hostname }} | RING={{ hostvars[inventory_hostname].patch_ring | default('unknown') }} | STATUS=attempted"
+            create: true
+            mode: "0644"

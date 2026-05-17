@@ -1,0 +1,138 @@
+name: 'b5 Terraform Plan (PR)'
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'przyklad_blok5/infra/**'
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+  ARM_USE_OIDC: "true"
+
+jobs:
+  lint:
+    name: 'Lint & Security'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./przyklad_blok5/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive -diff .
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: Run TFLint
+        run: |
+          tflint --init
+          tflint --format compact
+
+      - name: Run Trivy (Security Scan)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: './przyklad_blok5/infra'
+          format: 'table'
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+
+  plan:
+    name: 'Terraform Plan'
+    needs: [lint]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./przyklad_blok5/infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -no-color \
+            -var-file=environments/dev.tfvars \
+            -out=tfplan \
+            2>&1 | tee plan_output.txt
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync(
+              'przyklad_blok5/infra/plan_output.txt', 'utf8'
+            );
+
+            // Ogranicz do 60k znaków (limit komentarza GitHub)
+            const maxLen = 60000;
+            const truncated = plan.length > maxLen
+              ? plan.substring(0, maxLen) + '\n\n... (truncated)'
+              : plan;
+
+            const body = [
+              '## 📋 Terraform Plan',
+              '',
+              '<details>',
+              '<summary>Plan output (kliknij aby rozwinąć)</summary>',
+              '',
+              '```hcl',
+              truncated,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            // Znajdź istniejący komentarz bota
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.data.find(
+              c => c.body.includes('## 📋 Terraform Plan')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Upload Plan Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.event.pull_request.head.sha }}
+          path: przyklad_blok5/infra/tfplan
+          retention-days: 7

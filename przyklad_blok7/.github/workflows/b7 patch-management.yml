@@ -1,0 +1,144 @@
+name: 'b7 Patch Management (Terraform → Ansible)'
+
+on:
+  schedule:
+    - cron: '0 2 * * 6'          # Sobota o 2:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run mode (--check --diff)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      target_playbook:
+        description: 'Playbook do uruchomienia'
+        required: true
+        default: 'patch_linux.yml'
+        type: choice
+        options:
+          - patch_linux.yml
+          - patch_windows.yml
+          - rolling_update.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+env::
+  ARM_CLIENT_ID: "${{ secrets.ARM_CLIENT_ID }}"
+  ARM_SUBSCRIPTION_ID: "${{ secrets.ARM_SUBSCRIPTION_ID }}"
+  ARM_TENANT_ID: "${{ secrets.ARM_TENANT_ID }}"
+  ARM_USE_OIDC: "true"
+  DRY_RUN: "${{ github.event.inputs.dry_run || 'true' }}"
+  PLAYBOOK: "${{ github.event.inputs.target_playbook || 'patch_linux.yml' }}"
+
+jobs:
+  # ==========================================
+  # Job 1: Przygotowanie — eksport inventory
+  # ==========================================
+  prepare:
+    name: 'Prepare Inventory (Terraform)'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./przyklad_blok7/infra
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan (verify state)
+        run: terraform plan -var-file=environments/dev.tfvars -no-color
+
+      - name: Export Ansible Inventory
+        run: |
+          terraform output -raw ansible_inventory > ../ansible/hosts.yml
+          echo "--- Wygenerowany inventory ---"
+          cat ../ansible/hosts.yml
+
+      - name: Upload Inventory Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-inventory
+          path: przyklad_blok7/ansible/hosts.yml
+          retention-days: 1
+
+  # ==========================================
+  # Job 2: Patchowanie Linux
+  # ==========================================
+  patch-linux:
+    name: 'Patch Linux (${{ github.event.inputs.dry_run == ''true'' && ''DRY-RUN'' || ''LIVE'' }})'
+    needs: [prepare]
+    runs-on: ubuntu-latest       # Wymaga self-hosted runner w VNet!
+    defaults:
+      run:
+        working-directory: ./przyklad_blok7/ansible
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Inventory
+        uses: actions/download-artifact@v4
+        with:
+          name: ansible-inventory
+          path: przyklad_blok7/ansible
+
+      - name: Install Ansible
+        run: |
+          pip install ansible ansible-lint
+
+      - name: Ansible Lint
+        run: ansible-lint ${{ env.PLAYBOOK }} || true
+
+      - name: Run Ansible Playbook
+        run: |
+          EXTRA_ARGS=""
+          if [ "${{ env.DRY_RUN }}" = "true" ]; then
+            EXTRA_ARGS="--check --diff"
+            echo "🔍 DRY-RUN MODE — no changes will be applied"
+          else
+            echo "⚡ LIVE MODE — changes will be applied"
+          fi
+
+          ansible-playbook ${{ env.PLAYBOOK }} \
+            -i hosts.yml \
+            $EXTRA_ARGS \
+            --become \
+            -v \
+            2>&1 | tee patch_output.txt
+
+      - name: Generate Patch Report
+        if: always()
+        run: |
+          echo "## 🩹 Patch Management Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parametr | Wartość |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Data | $(date -u '+%Y-%m-%d %H:%M UTC') |" >> $GITHUB_STEP_SUMMARY
+          echo "| Playbook | \`${{ env.PLAYBOOK }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tryb | ${{ env.DRY_RUN == 'true' && 'DRY-RUN' || 'LIVE' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 patch_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload Patch Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-log-${{ github.run_number }}
+          path: przyklad_blok7/ansible/patch_output.txt
+          retention-days: 30

@@ -8,12 +8,16 @@ terraform {
     }
   }
 
-  # Backend z partial configuration — key nadawany z CLI per env:
-  #   terraform init -backend-config="key=blok4/dev.terraform.tfstate"
+  #backend "azurerm" {
+  #  resource_group_name  = "rg-terraform-state"
+  #  storage_account_name = "stterraformstate"
+  #  container_name       = "tfstate"
+  #  use_oidc             = true
+  #}
   backend "azurerm" {
     storage_account_name = "tflab1sa30vv44"
     container_name       = "mojstan"
-    key                  = "lab4-repo-devsecops.terraform.tfstate"
+    key                  = "lab5-repo-dso.terraform.tfstate"
     resource_group_name  = "tf-lab1-rg30vv44"
     use_azuread_auth     = true
   }
