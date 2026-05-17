@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,14 +62,28 @@ func TestTerraformPlanOnly(t *testing.T) {
 	resourceCount := len(planStruct.RawPlan.PlannedValues.RootModule.Resources)
 	assert.GreaterOrEqual(t, resourceCount, 4, "Plan powinien tworzyć co najmniej 4 zasoby")
 
-	// Sprawdź, że subnety z dev.tfvars są zaplanowane
+	// Sprawdź, że subnet z kluczem "app" (for_each) jest zaplanowany.
+	hasSubnetResource := false
+	hasAppSubnet := false
 	for _, resource := range planStruct.RawPlan.PlannedValues.RootModule.Resources {
-		if resource.Type == "azurerm_subnet" {
-			assert.Contains(t, resource.Name, "app",
-				"Powinien zaplanować subnet z dev.tfvars (app)")
+		if resource.Type != "azurerm_subnet" {
+			continue
+		}
+
+		hasSubnetResource = true
+		if strings.Contains(resource.Address, "[\"app\"]") {
+			hasAppSubnet = true
+			break
+		}
+
+		if name, ok := resource.AttributeValues["name"].(string); ok && name == "snet-app" {
+			hasAppSubnet = true
 			break
 		}
 	}
+
+	assert.True(t, hasSubnetResource, "Plan powinien zawierać co najmniej jeden subnet")
+	assert.True(t, hasAppSubnet, "Powinien zaplanować subnet z dev.tfvars (app)")
 }
 
 // =====================================================

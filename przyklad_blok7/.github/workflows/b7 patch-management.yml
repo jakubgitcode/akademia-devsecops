@@ -86,19 +86,27 @@ jobs:
           echo "--- Wygenerowany inventory ---"
           cat ../ansible/hosts.yml
 
-      #- name: Validate Inventory
-      #  run: |
-      #    if ! grep -Eq '"?ansible_host"?[[:space:]]*:' ../ansible/hosts.yml; then
-      #      echo "Inventory nie zawiera hostów (ansible_host)."
-      #      echo "Uruchom workflow_dispatch z provision_infra=true albo najpierw wykonaj provisioning VM."
-      #      exit 1
-      #    fi
+      - name: Export SSH Private Key
+        run: |
+          mkdir -p ../ansible
+          terraform output -raw ssh_private_key > ../ansible/ssh_key.pem
+          chmod 600 ../ansible/ssh_key.pem
+
+      - name: Validate Inventory
+        run: |
+          if ! grep -Eq '"?ansible_host"?[[:space:]]*:' ../ansible/hosts.yml; then
+            echo "Inventory nie zawiera hostów (ansible_host)."
+            echo "Uruchom workflow_dispatch z provision_infra=true albo najpierw wykonaj provisioning VM."
+            exit 1
+          fi
 
       - name: Upload Inventory Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ansible-inventory
-          path: przyklad_blok7/ansible/hosts.yml
+          path: |
+            przyklad_blok7/ansible/hosts.yml
+            przyklad_blok7/ansible/ssh_key.pem
           retention-days: 1
 
   # ==========================================
@@ -130,6 +138,9 @@ jobs:
       - name: Ansible Lint
         run: ansible-lint "$PLAYBOOK" || true
 
+      - name: Set SSH key permissions
+        run: chmod 600 ssh_key.pem
+
       - name: Run Ansible Playbook
         run: |
           EXTRA_ARGS=""
@@ -142,6 +153,8 @@ jobs:
 
           ansible-playbook "$PLAYBOOK" \
             -i hosts.yml \
+            --private-key ssh_key.pem \
+            --ssh-extra-args="-o StrictHostKeyChecking=no" \
             $EXTRA_ARGS \
             --become \
             -v \

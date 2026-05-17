@@ -33,6 +33,43 @@ resource "azurerm_subnet" "main" {
   address_prefixes     = ["10.30.1.0/24"]
 }
 
+# --- NSG: SSH from GitHub Actions ---
+resource "azurerm_network_security_group" "main" {
+  name                = "nsg-${local.resource_name_prefix}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  tags                = local.common_tags
+
+  security_rule {
+    name                       = "Allow-SSH-Inbound"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "main" {
+  subnet_id                 = azurerm_subnet.main.id
+  network_security_group_id = azurerm_network_security_group.main.id
+}
+
+# --- Public IP per VM ---
+resource "azurerm_public_ip" "linux" {
+  for_each = local.linux_vm_names
+
+  name                = "pip-${local.resource_name_prefix}-${each.key}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = local.common_tags
+}
+
 # --- SSH Key ---
 resource "tls_private_key" "ssh" {
   algorithm = "RSA"
@@ -52,6 +89,7 @@ resource "azurerm_network_interface" "linux" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.main.id
     private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.linux[each.key].id
   }
 }
 
