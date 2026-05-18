@@ -158,7 +158,7 @@ jobs:
   # ==========================================
   plan-prod:
     name: '📋 Plan PROD'
-    needs: [apply-test]
+    #needs: [apply-test]
     if: >-
       github.event.inputs.target_env == 'all' ||
       github.event.inputs.target_env == 'prod' ||
