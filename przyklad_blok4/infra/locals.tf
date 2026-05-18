@@ -6,6 +6,8 @@ locals {
     Project     = var.project_name
     ManagedBy   = "terraform"
     Pipeline    = "github-actions"
+    Owner       = "Kuba"
+    CreatedBy   = "Kuba"
   })
 
   # Storage account name: max 24 chars, lowercase, no hyphens
