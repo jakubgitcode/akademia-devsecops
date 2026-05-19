@@ -8,7 +8,7 @@ locals {
     Pipeline    = "github-actions"
     Owner       = "Kuba"
     CreatedBy   = "Kuba"
-    PM          = "Kuba"
+    cokolwiek   = "Kuba"
   })
 
   # Storage account name: max 24 chars, lowercase, no hyphens
